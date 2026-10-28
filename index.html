@@ -1,1026 +1,198 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Connectifit Gamified Stream Overlay</title>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Connectifit Gamified Overlay</title>
+  <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
   <style>
-    :root {
-      --primary-blue: #0088ff;
-      --accent-glow: rgba(0, 136, 255, 0.6);
-      --card-bg-front: #0a0c10;
-      --card-bg-back: #0f141c;
-      --card-aspect: 0.714; /* 2.5 : 3.5 playing card ratio */
-      --card-width: 200px;
-      --font-family: 'Outfit', sans-serif;
-      --text-color: #ffffff;
-    }
-
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
     }
 
     body, html {
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: transparent;
-      font-family: var(--font-family);
-      color: var(--text-color);
+      background-color: transparent;
+      font-family: Arial, sans-serif;
     }
 
-    /* OBS Stage Canvas */
-    #overlay-stage {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 1rem;
-    }
-
-    /* Hardware-Accelerated Smooth Transitions & Mobile Wrapping */
-    .cards-container {
-      display: flex;
-      gap: 2rem;
-      justify-content: center;
-      align-items: center;
-      perspective: 1200px;
-      width: 100%;
-      max-width: 1200px;
-      flex-wrap: wrap; /* Prevents squishing/stretching on mobile screens */
-      opacity: 1;
-      transform: scale(1) translateY(0);
-      transition: opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1), transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
-      will-change: opacity, transform;
-    }
-
-    /* Applied on Source Hide */
-    .cards-container.obs-hidden {
-      opacity: 0 !important;
-      transform: scale(0.88) translateY(20px) !important;
-      pointer-events: none;
-    }
-
-    .cards-container.horizontal { flex-direction: row; }
-    .cards-container.vertical { flex-direction: column; }
-    .cards-container.grid {
-      display: grid;
-      grid-template-columns: repeat(2, auto);
-      gap: 1.5rem;
-      justify-content: center;
-    }
-
-    /* 2.5:3.5 Playing Card Setup */
-    .card-wrapper {
-      width: var(--card-width);
-      height: calc(var(--card-width) / var(--card-aspect));
-      perspective: 1000px;
-      cursor: pointer;
-      position: relative;
-      transition: transform 0.25s ease, filter 0.25s ease;
-    }
-
-    .card-wrapper:hover {
-      transform: translateY(-8px) scale(1.03);
-    }
-
-    .card-inner {
-      position: relative;
-      width: 100%;
-      height: 100%;
-      border-radius: 14px;
-      transform-style: preserve-3d;
-      transition: transform 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-    }
-
-    .card-wrapper.flipped .card-inner {
-      transform: rotateY(180deg);
-    }
-
-    .card-face {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      border-radius: 14px;
-      backface-visibility: hidden;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      border: 3px solid var(--primary-blue);
-      box-shadow: 0 0 15px var(--accent-glow), inset 0 0 10px rgba(0,0,0,0.8);
-      background-color: var(--card-bg-front);
-    }
-
-    .card-front { z-index: 2; }
-    .card-back {
-      transform: rotateY(180deg);
-      background-color: var(--card-bg-back);
-    }
-
-    .card-img-layer {
+    /* VDO.Ninja Video Background Container */
+    #vdo-container {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
       z-index: 1;
-      pointer-events: none;
+      border: none;
+      pointer-events: none; /* Allows touch events to fall through if needed */
     }
 
-    .card-img-layer img {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-
-    .card-text-overlay {
-      position: relative;
-      z-index: 3;
-      text-align: center;
-      padding: 0.8rem;
-      background: rgba(0, 0, 0, 0.65);
-      backdrop-filter: blur(6px);
-      width: 90%;
-      border-radius: 8px;
-      border: 1px solid rgba(255,255,255,0.15);
-      text-shadow: 0 2px 4px rgba(0,0,0,0.9);
-      color: var(--text-color);
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      line-height: 1.2;
-    }
-
-    /* Floating Gear Controls Trigger */
-    #settings-trigger {
-      position: fixed;
-      top: 16px;
-      right: 16px;
-      z-index: 999;
-      background: rgba(10, 14, 23, 0.85);
-      border: 1px solid var(--primary-blue);
-      color: #fff;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-      box-shadow: 0 4px 15px rgba(0,136,255,0.4);
-      transition: all 0.3s ease;
-      backdrop-filter: blur(8px);
-    }
-
-    #settings-trigger:hover {
-      transform: rotate(45deg) scale(1.1);
-      background: var(--primary-blue);
-    }
-
-    /* Control Panel Drawer */
-    #control-drawer {
-      position: fixed;
+    /* Interactive Overlay Canvas Layer */
+    #overlay-container {
+      position: absolute;
       top: 0;
-      right: 0;
-      width: 440px;
-      max-width: 90vw;
-      height: 100vh;
-      background: rgba(10, 14, 23, 0.96);
-      backdrop-filter: blur(16px);
-      border-left: 1px solid rgba(0, 136, 255, 0.3);
-      z-index: 1000;
-      display: flex;
-      flex-direction: column;
-      transform: translateX(100%);
-      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-      box-shadow: -10px 0 30px rgba(0,0,0,0.8);
-    }
-
-    #control-drawer.open { transform: translateX(0); }
-
-    .drawer-header {
-      padding: 1.25rem 1.5rem;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background: rgba(0,0,0,0.2);
-      flex-shrink: 0;
-    }
-
-    .drawer-header h2 {
-      font-size: 1.2rem;
-      font-weight: 800;
-      color: #fff;
-    }
-
-    .close-btn {
-      background: none;
-      border: none;
-      color: #a0aec0;
-      font-size: 1.5rem;
-      cursor: pointer;
-    }
-
-    .close-btn:hover { color: #fff; }
-
-    .drawer-nav {
-      display: flex;
-      background: rgba(0,0,0,0.3);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      flex-shrink: 0;
-    }
-
-    .nav-tab {
-      flex: 1;
-      padding: 0.75rem 0.5rem;
-      text-align: center;
-      background: none;
-      border: none;
-      color: #a0aec0;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
-    }
-
-    .nav-tab.active {
-      color: var(--primary-blue);
-      border-bottom-color: var(--primary-blue);
-      background: rgba(0, 136, 255, 0.08);
-    }
-
-    .drawer-body {
-      flex: 1 1 auto;
-      overflow-y: auto;
-      padding: 1.25rem 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: 1.25rem;
-    }
-
-    .tab-content {
-      display: none;
-      flex-direction: column;
-      gap: 1.25rem;
-    }
-
-    .tab-content.active { display: flex; }
-
-    .drawer-footer {
-      padding: 1.25rem 1.5rem;
-      border-top: 1px solid rgba(255,255,255,0.1);
-      background: rgba(8, 11, 18, 0.95);
-      flex-shrink: 0;
-      box-shadow: 0 -5px 15px rgba(0,0,0,0.4);
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-    }
-
-    .form-group label {
-      font-size: 0.8rem;
-      font-weight: 600;
-      color: #cbd5e0;
-      text-transform: uppercase;
-    }
-
-    .form-control {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 6px;
-      padding: 0.6rem 0.8rem;
-      color: #fff;
-      font-size: 0.9rem;
-      outline: none;
-    }
-
-    .form-control:focus { border-color: var(--primary-blue); }
-
-    .range-group {
-      display: flex;
-      align-items: center;
-      gap: 0.8rem;
-    }
-
-    .range-group input[type="range"] {
-      flex: 1;
-      accent-color: var(--primary-blue);
-    }
-
-    .range-value {
-      font-size: 0.8rem;
-      width: 45px;
-      text-align: right;
-      color: #a0aec0;
-    }
-
-    .row-2 {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.8rem;
-    }
-
-    .crop-preview-box {
-      width: 100%;
-      height: 160px;
-      background: #000;
-      border: 2px dashed var(--primary-blue);
-      border-radius: 8px;
-      overflow: hidden;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .crop-preview-box img {
+      left: 0;
       width: 100%;
       height: 100%;
-    }
-
-    .btn {
-      width: 100%;
-      padding: 0.85rem;
-      border: none;
-      border-radius: 8px;
-      font-weight: 800;
-      font-size: 0.95rem;
-      cursor: pointer;
+      z-index: 10; /* Sits cleanly ABOVE the video layer */
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 0.5rem;
-      text-transform: uppercase;
-      transition: all 0.2s;
+      gap: 15px;
+      padding: 20px;
+      pointer-events: auto; /* Forces 100% touch interactivity on mobile */
     }
 
-    .btn-green {
-      background: #00c853;
-      color: #000;
-      box-shadow: 0 4px 15px rgba(0, 200, 83, 0.35);
+    /* Cards Styling */
+    .card {
+      width: 100px;
+      height: 150px;
+      perspective: 1000px;
+      cursor: pointer;
+      position: relative;
+      touch-action: manipulation;
     }
 
-    .btn-green:hover { background: #00e676; }
+    .card-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      text-align: center;
+      transition: transform 0.6s;
+      transform-style: preserve-3d;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    }
 
-    .btn-secondary {
-      background: rgba(255, 255, 255, 0.08);
+    .card.flipped .card-inner {
+      transform: rotateY(180deg);
+    }
+
+    .card-front, .card-back {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      -webkit-backface-visibility: hidden;
+      backface-visibility: hidden;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
       color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      padding: 0.55rem;
-      font-size: 0.8rem;
+      border: 2px solid #00d2ff;
     }
 
-    .btn-secondary:hover { background: rgba(255, 255, 255, 0.15); }
-
-    .btn-danger {
-      background: rgba(255, 59, 48, 0.2);
-      color: #ff453a;
-      border: 1px solid #ff453a;
-      padding: 0.55rem;
-      font-size: 0.8rem;
+    .card-front {
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
     }
 
-    .btn-danger:hover {
-      background: #ff453a;
-      color: #fff;
+    .card-back {
+      background: linear-gradient(135deg, #ff416c, #ff4b2b);
+      transform: rotateY(180deg);
     }
 
-    .quick-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .hotkey-info {
-      background: rgba(0, 136, 255, 0.1);
-      border: 1px solid rgba(0, 136, 255, 0.3);
-      padding: 0.65rem;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      color: #a0aec0;
-      line-height: 1.4;
-    }
-
-    .hotkey-info b {
-      color: var(--primary-blue);
+    /* Locked state when client taps a card */
+    .card.disabled {
+      opacity: 0.5;
+      pointer-events: none;
+      filter: grayscale(80%);
     }
   </style>
 </head>
 <body>
 
-  <!-- OBS Stage -->
-  <div id="overlay-stage">
-    <div id="cards-container" class="cards-container horizontal">
-      <!-- Card 1 -->
-      <div class="card-wrapper" data-card-id="0" onclick="handleCardClick(0)">
-        <div class="card-inner">
-          <div class="card-face card-front">
-            <div class="card-img-layer front-img-layer"><img></div>
-          </div>
-          <div class="card-face card-back">
-            <div class="card-img-layer back-img-layer"><img></div>
-            <div class="card-text-overlay back-text">Reward 1</div>
-          </div>
-        </div>
-      </div>
+  <!-- Background VDO.Ninja Frame (Dynamically injected if client mode) -->
+  <iframe id="vdo-container" allow="camera; microphone; autoplay"></iframe>
 
-      <!-- Card 2 -->
-      <div class="card-wrapper" data-card-id="1" onclick="handleCardClick(1)">
-        <div class="card-inner">
-          <div class="card-face card-front">
-            <div class="card-img-layer front-img-layer"><img></div>
-          </div>
-          <div class="card-face card-back">
-            <div class="card-img-layer back-img-layer"><img></div>
-            <div class="card-text-overlay back-text">Reward 2</div>
-          </div>
-        </div>
+  <!-- Foreground Touch Interactive Overlay -->
+  <div id="overlay-container">
+    <div class="card" id="card1" onclick="selectCard('card1')">
+      <div class="card-inner">
+        <div class="card-front">Card 1</div>
+        <div class="card-back">Selected</div>
       </div>
-
-      <!-- Card 3 -->
-      <div class="card-wrapper" data-card-id="2" onclick="handleCardClick(2)">
-        <div class="card-inner">
-          <div class="card-face card-front">
-            <div class="card-img-layer front-img-layer"><img></div>
-          </div>
-          <div class="card-face card-back">
-            <div class="card-img-layer back-img-layer"><img></div>
-            <div class="card-text-overlay back-text">Reward 3</div>
-          </div>
-        </div>
+    </div>
+    <div class="card" id="card2" onclick="selectCard('card2')">
+      <div class="card-inner">
+        <div class="card-front">Card 2</div>
+        <div class="card-back">Selected</div>
+      </div>
+    </div>
+    <div class="card" id="card3" onclick="selectCard('card3')">
+      <div class="card-inner">
+        <div class="card-front">Card 3</div>
+        <div class="card-back">Selected</div>
       </div>
     </div>
   </div>
-
-  <button id="settings-trigger" onclick="toggleDrawer(true)">⚙️</button>
-
-  <!-- Control Drawer Panel -->
-  <div id="control-drawer">
-    <div class="drawer-header">
-      <h2>⚙️ Overlay Controls</h2>
-      <button class="close-btn" onclick="toggleDrawer(false)">✕</button>
-    </div>
-
-    <div class="drawer-nav">
-      <button class="nav-tab active" onclick="switchTab('rewards')">Rewards</button>
-      <button class="nav-tab" onclick="switchTab('front-crop')">Cover (Front)</button>
-      <button class="nav-tab" onclick="switchTab('back-crop')">Rewards (Back)</button>
-      <button class="nav-tab" onclick="switchTab('display')">Display & Audio</button>
-    </div>
-
-    <div class="drawer-body">
-      <div class="quick-actions">
-        <button class="btn btn-secondary" onclick="resetAllFlips()">🔄 Flip Back All (Key: R)</button>
-        <button class="btn btn-secondary" onclick="shuffleRewards()">🔀 Shuffle Rewards</button>
-      </div>
-
-      <div class="hotkey-info">
-        ⌨️ <b>Keyboard Hotkeys Active:</b><br>
-        • Press <b>1</b>, <b>2</b>, or <b>3</b> to flip Cards 1, 2, or 3.<br>
-        • Press <b>R</b> or <b>0</b> to reset/flip back all cards.
-      </div>
-
-      <!-- TAB 1: REWARDS & ORDERING -->
-      <div id="tab-rewards" class="tab-content active">
-        <div class="form-group">
-          <label>Card Slot 1 (Hotkey: 1)</label>
-          <input type="text" id="reward-text-0" class="form-control" value="50 Pushups" oninput="updateSettings()">
-          <div class="row-2" style="margin-top: 4px;">
-            <input type="file" id="reward-file-0" accept="image/*" class="form-control" onchange="handleRewardImageUpload(0, this)">
-            <select id="order-0" class="form-control" onchange="reorderCards()">
-              <option value="0" selected>Pos: 1</option>
-              <option value="1">Pos: 2</option>
-              <option value="2">Pos: 3</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Card Slot 2 (Hotkey: 2)</label>
-          <input type="text" id="reward-text-1" class="form-control" value="Free T-Shirt" oninput="updateSettings()">
-          <div class="row-2" style="margin-top: 4px;">
-            <input type="file" id="reward-file-1" accept="image/*" class="form-control" onchange="handleRewardImageUpload(1, this)">
-            <select id="order-1" class="form-control" onchange="reorderCards()">
-              <option value="0">Pos: 1</option>
-              <option value="1" selected>Pos: 2</option>
-              <option value="2">Pos: 3</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Card Slot 3 (Hotkey: 3)</label>
-          <input type="text" id="reward-text-2" class="form-control" value="VIP Spot" oninput="updateSettings()">
-          <div class="row-2" style="margin-top: 4px;">
-            <input type="file" id="reward-file-2" accept="image/*" class="form-control" onchange="handleRewardImageUpload(2, this)">
-            <select id="order-2" class="form-control" onchange="reorderCards()">
-              <option value="0">Pos: 1</option>
-              <option value="1">Pos: 2</option>
-              <option value="2" selected>Pos: 3</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 2: FRONT COVER CROP -->
-      <div id="tab-front-crop" class="tab-content">
-        <div class="form-group">
-          <label>Front Cover Logo Image</label>
-          <input type="file" id="front-logo-file" accept="image/*" class="form-control" onchange="handleFrontImageUpload(this)">
-        </div>
-
-        <div class="crop-preview-box">
-          <img id="front-preview-img" src="" alt="Front Preview">
-        </div>
-
-        <div class="form-group">
-          <label>Front Image Object Fit</label>
-          <select id="front-fit" class="form-control" onchange="updateSettings()">
-            <option value="cover" selected>Cover (Fill Card Front Entirely)</option>
-            <option value="contain">Contain (Fit Whole Image)</option>
-            <option value="fill">Fill (Stretch Edge-to-Edge)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Front Zoom / Scale Factor</label>
-          <div class="range-group">
-            <input type="range" id="front-zoom" min="100" max="250" value="100" oninput="updateSettings()">
-            <span class="range-value" id="front-zoom-val">100%</span>
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="form-group">
-            <label>Position X</label>
-            <div class="range-group">
-              <input type="range" id="front-pos-x" min="0" max="100" value="50" oninput="updateSettings()">
-              <span class="range-value" id="front-pos-x-val">50%</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Position Y</label>
-            <div class="range-group">
-              <input type="range" id="front-pos-y" min="0" max="100" value="50" oninput="updateSettings()">
-              <span class="range-value" id="front-pos-y-val">50%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 3: BACK CROP -->
-      <div id="tab-back-crop" class="tab-content">
-        <div class="form-group">
-          <label>Back Image Object Fit</label>
-          <select id="back-fit" class="form-control" onchange="updateSettings()">
-            <option value="cover" selected>Cover (Fill Card Entirely)</option>
-            <option value="contain">Contain (Fit Entire Image)</option>
-            <option value="fill">Fill (Stretch Edge-to-Edge)</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Back Images Zoom Level</label>
-          <div class="range-group">
-            <input type="range" id="back-zoom" min="100" max="250" value="100" oninput="updateSettings()">
-            <span class="range-value" id="back-zoom-val">100%</span>
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="form-group">
-            <label>Position X</label>
-            <div class="range-group">
-              <input type="range" id="back-pos-x" min="0" max="100" value="50" oninput="updateSettings()">
-              <span class="range-value" id="back-pos-x-val">50%</span>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>Position Y</label>
-            <div class="range-group">
-              <input type="range" id="back-pos-y" min="0" max="100" value="50" oninput="updateSettings()">
-              <span class="range-value" id="back-pos-y-val">50%</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB 4: DISPLAY & AUDIO -->
-      <div id="tab-display" class="tab-content">
-        <div class="form-group">
-          <label>Card Size (Width)</label>
-          <div class="range-group">
-            <input type="range" id="card-width-slider" min="100" max="300" value="200" oninput="updateSettings()">
-            <span class="range-value" id="card-width-val">200px</span>
-          </div>
-        </div>
-
-        <div class="row-2">
-          <div class="form-group">
-            <label>Border Glow Color</label>
-            <input type="color" id="primary-color-input" class="form-control" value="#0088ff" style="height: 38px; padding:2px;" oninput="updateSettings()">
-          </div>
-          <div class="form-group">
-            <label>Font Color</label>
-            <input type="color" id="font-color-input" class="form-control" value="#ffffff" style="height: 38px; padding:2px;" oninput="updateSettings()">
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>Layout Style</label>
-          <select id="layout-select" class="form-control" onchange="updateSettings()">
-            <option value="horizontal" selected>Horizontal</option>
-            <option value="grid">Grid (2x2)</option>
-            <option value="vertical">Vertical</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label>Card Flip Audio FX (MP3)</label>
-          <input type="file" id="audio-file" accept="audio/*" class="form-control" onchange="handleAudioUpload(this)">
-        </div>
-
-        <button class="btn btn-danger" style="margin-top: 1rem;" onclick="resetSavedData()">
-          ⚠️ Reset Saved Settings
-        </button>
-      </div>
-    </div>
-
-    <div class="drawer-footer">
-      <button class="btn btn-green" onclick="toggleDrawer(false)">
-        ✓ Save & Close Settings
-      </button>
-    </div>
-  </div>
-
-  <!-- Ably Realtime Script -->
-  <script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
 
   <script>
-    const STORAGE_KEY = 'CONNECTIFIT_CARD_OVERLAY_STATE';
+    // URL Parameter Parsing
+    const urlParams = new URLSearchParams(window.location.search);
+    const isClient = urlParams.get('client') === 'true';
+    const roomName = urlParams.get('room') || 'CLS2026';
 
-    // Ably Root API Key configured
-    const ABLY_KEY = 'PaqQqA.Z2mwNw:eC01Vbna9gRftKwSPQAGqQAX4_3aXU4alNy342yGYK8';
-    
-    // Initialize Ably connection for cross-device sync
-    const ably = new Ably.Realtime(ABLY_KEY);
-    const channel = ably.channels.get('connectifit-card-sync-room');
+    // Ably Realtime Setup
+    const ably = new Ably.Realtime('PaqQqA.Z2mwNw:eC01Vbna9gRftKwSPQAGqQAX4_3aXU4alNy342yGYK8');
+    const channel = ably.channels.get('connectifit-cards');
 
-    let defaultFrontImg = 'https://images.unsplash.com/photo-1517838277536-f5f99be501cd?auto=format&fit=crop&w=600&q=80';
-    let defaultBackImg = 'https://images.unsplash.com/photo-1534438327276-14e5300c3a48?auto=format&fit=crop&w=600&q=80';
+    let hasSelected = false;
 
-    let state = {
-      cardWidth: 200,
-      primaryColor: '#0088ff',
-      fontColor: '#ffffff',
-      layout: 'horizontal',
-      frontImage: defaultFrontImg,
-      frontFit: 'cover',
-      frontZoom: 100,
-      frontPosX: 50,
-      frontPosY: 50,
-      backFit: 'cover',
-      backZoom: 100,
-      backPosX: 50,
-      backPosY: 50,
-      cards: [
-        { id: 0, rewardText: '50 Pushups', image: defaultBackImg, order: 0 },
-        { id: 1, rewardText: 'Free T-Shirt', image: defaultBackImg, order: 1 },
-        { id: 2, rewardText: 'VIP Spot', image: defaultBackImg, order: 2 }
-      ],
-      audioSrc: null
-    };
+    // Load VDO.Ninja into background iframe on client mobile
+    const vdoFrame = document.getElementById('vdo-container');
+    if (isClient) {
+      vdoFrame.src = `https://vdo.ninja/?push&room=${roomName}&webcam&transparent&cover&clean&nocontrols`;
+    } else {
+      // In Streamlabs mode, hide iframe background so scene stays transparent
+      vdoFrame.style.display = 'none';
+    }
 
-    let audioPlayer = new Audio();
+    // Card Selection Logic
+    function selectCard(cardId) {
+      if (hasSelected && isClient) return; // Restrict client to 1 selection
 
-    window.addEventListener('DOMContentLoaded', () => {
-      loadStateFromStorage();
-      syncUIInputsFromState();
-      applyStateToOverlay();
+      flipAndHighlight(cardId);
 
-      // Bind Keyboard Hotkeys (1, 2, 3 to flip cards; R or 0 to reset)
-      window.addEventListener('keydown', handleGlobalHotkeys);
+      // Broadcast event via Ably
+      channel.publish('card-flip', { cardId: cardId });
 
-      // Explicit OBS / Streamlabs Source Visibility Observer
-      if (window.obsstudio) {
-        window.obsstudio.onVisibilityChange = function(visible) {
-          trigger15sFade(visible);
-        };
-        window.obsstudio.onActiveChange = function(active) {
-          trigger15sFade(active);
-        };
-      }
-    });
-
-    window.addEventListener('obsSourceVisibleChanged', function(event) {
-      trigger15sFade(event.detail.visible);
-    });
-
-    function trigger15sFade(visible) {
-      const container = document.getElementById('cards-container');
-      if (visible) {
-        container.classList.remove('obs-hidden');
-      } else {
-        container.classList.add('obs-hidden');
+      if (isClient) {
+        hasSelected = true;
+        lockOtherCards(cardId);
       }
     }
 
-    function handleGlobalHotkeys(event) {
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      if (key === '1') {
-        handleCardClick(0);
-      } else if (key === '2') {
-        handleCardClick(1);
-      } else if (key === '3') {
-        handleCardClick(2);
-      } else if (key === 'r' || key === '0') {
-        resetAllFlips();
+    function flipAndHighlight(cardId) {
+      const card = document.getElementById(cardId);
+      if (card) {
+        card.classList.add('flipped');
       }
     }
 
-    function toggleDrawer(open) {
-      const drawer = document.getElementById('control-drawer');
-      if (open) {
-        drawer.classList.add('open');
-      } else {
-        drawer.classList.remove('open');
-      }
-    }
-
-    function switchTab(tabId) {
-      document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-      
-      event.target.classList.add('active');
-      document.getElementById(`tab-${tabId}`).classList.add('active');
-    }
-
-    function handleCardClick(cardIndex, fromRemote = false) {
-      const cardEl = document.querySelector(`.card-wrapper[data-card-id="${cardIndex}"]`);
-      if (!cardEl) return;
-
-      if (!fromRemote) {
-        cardEl.classList.toggle('flipped');
-        const isFlipped = cardEl.classList.contains('flipped');
-        
-        if (isFlipped && state.audioSrc) {
-          audioPlayer.currentTime = 0;
-          audioPlayer.play().catch(() => {});
-        }
-
-        channel.publish('card-state-change', { id: cardIndex, flipped: isFlipped });
-      } else {
-        const currentlyFlipped = cardEl.classList.contains('flipped');
-        if (currentlyFlipped !== fromRemote.flipped) {
-          cardEl.classList.toggle('flipped', fromRemote.flipped);
-          if (fromRemote.flipped && state.audioSrc) {
-            audioPlayer.currentTime = 0;
-            audioPlayer.play().catch(() => {});
-          }
-        }
-      }
-    }
-
-    channel.subscribe('card-state-change', (message) => {
-      handleCardClick(message.data.id, { flipped: message.data.flipped });
-    });
-
-    function resetAllFlips(fromRemote = false) {
-      document.querySelectorAll('.card-wrapper').forEach(card => card.classList.remove('flipped'));
-      if (!fromRemote) {
-        channel.publish('reset-all', {});
-      }
-    }
-
-    channel.subscribe('reset-all', () => {
-      resetAllFlips(true);
-    });
-
-    function shuffleRewards() {
-      let texts = state.cards.map(c => c.rewardText);
-      let imgs = state.cards.map(c => c.image);
-      
-      for (let i = texts.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [texts[i], texts[j]] = [texts[j], texts[i]];
-        [imgs[i], imgs[j]] = [imgs[j], imgs[i]];
-      }
-
-      state.cards.forEach((card, idx) => {
-        card.rewardText = texts[idx];
-        card.image = imgs[idx];
-        document.getElementById(`reward-text-${card.id}`).value = texts[idx];
-      });
-
-      saveStateToStorage();
-      applyStateToOverlay();
-    }
-
-    function updateSettings() {
-      state.cardWidth = document.getElementById('card-width-slider').value;
-      document.getElementById('card-width-val').innerText = `${state.cardWidth}px`;
-
-      state.primaryColor = document.getElementById('primary-color-input').value;
-      state.fontColor = document.getElementById('font-color-input').value;
-      state.layout = document.getElementById('layout-select').value;
-
-      state.frontFit = document.getElementById('front-fit').value;
-      state.frontZoom = document.getElementById('front-zoom').value;
-      state.frontPosX = document.getElementById('front-pos-x').value;
-      state.frontPosY = document.getElementById('front-pos-y').value;
-
-      document.getElementById('front-zoom-val').innerText = `${state.frontZoom}%`;
-      document.getElementById('front-pos-x-val').innerText = `${state.frontPosX}%`;
-      document.getElementById('front-pos-y-val').innerText = `${state.frontPosY}%`;
-
-      state.backFit = document.getElementById('back-fit').value;
-      state.backZoom = document.getElementById('back-zoom').value;
-      state.backPosX = document.getElementById('back-pos-x').value;
-      state.backPosY = document.getElementById('back-pos-y').value;
-
-      document.getElementById('back-zoom-val').innerText = `${state.backZoom}%`;
-      document.getElementById('back-pos-x-val').innerText = `${state.backPosX}%`;
-      document.getElementById('back-pos-y-val').innerText = `${state.backPosY}%`;
-
-      for (let i = 0; i < 3; i++) {
-        state.cards[i].rewardText = document.getElementById(`reward-text-${i}`).value;
-      }
-
-      saveStateToStorage();
-      applyStateToOverlay();
-    }
-
-    function handleFrontImageUpload(input) {
-      if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          state.frontImage = e.target.result;
-          document.getElementById('front-preview-img').src = e.target.result;
-          saveStateToStorage();
-          applyStateToOverlay();
-        };
-        reader.readAsDataURL(input.files[0]);
-      }
-    }
-
-    function handleRewardImageUpload(cardIndex, input) {
-      if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          state.cards[cardIndex].image = e.target.result;
-          saveStateToStorage();
-          applyStateToOverlay();
-        };
-        reader.readAsDataURL(input.files[0]);
-      }
-    }
-
-    function handleAudioUpload(input) {
-      if (input.files && input.files[0]) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          state.audioSrc = e.target.result;
-          audioPlayer.src = e.target.result;
-          saveStateToStorage();
-        };
-        reader.readAsDataURL(input.files[0]);
-      }
-    }
-
-    function reorderCards() {
-      const orders = [
-        parseInt(document.getElementById('order-0').value),
-        parseInt(document.getElementById('order-1').value),
-        parseInt(document.getElementById('order-2').value)
-      ];
-
-      state.cards[0].order = orders[0];
-      state.cards[1].order = orders[1];
-      state.cards[2].order = orders[2];
-
-      saveStateToStorage();
-      applyStateToOverlay();
-    }
-
-    function saveStateToStorage() {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (e) {
-        console.warn('Storage quota or file permission restricted', e);
-      }
-    }
-
-    function loadStateFromStorage() {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-          state = { ...state, ...JSON.parse(saved) };
-          if (state.audioSrc) audioPlayer.src = state.audioSrc;
-        }
-      } catch (e) {
-        console.warn('Failed to parse saved state:', e);
-      }
-    }
-
-    function syncUIInputsFromState() {
-      document.getElementById('card-width-slider').value = state.cardWidth;
-      document.getElementById('card-width-val').innerText = `${state.cardWidth}px`;
-
-      document.getElementById('primary-color-input').value = state.primaryColor;
-      document.getElementById('font-color-input').value = state.fontColor;
-      document.getElementById('layout-select').value = state.layout;
-
-      document.getElementById('front-fit').value = state.frontFit;
-      document.getElementById('front-zoom').value = state.frontZoom;
-      document.getElementById('front-pos-x').value = state.frontPosX;
-      document.getElementById('front-pos-y').value = state.frontPosY;
-
-      document.getElementById('front-zoom-val').innerText = `${state.frontZoom}%`;
-      document.getElementById('front-pos-x-val').innerText = `${state.frontPosX}%`;
-      document.getElementById('front-pos-y-val').innerText = `${state.frontPosY}%`;
-
-      document.getElementById('back-fit').value = state.backFit;
-      document.getElementById('back-zoom').value = state.backZoom;
-      document.getElementById('back-pos-x').value = state.backPosX;
-      document.getElementById('back-pos-y').value = state.backPosY;
-
-      document.getElementById('back-zoom-val').innerText = `${state.backZoom}%`;
-      document.getElementById('back-pos-x-val').innerText = `${state.backPosX}%`;
-      document.getElementById('back-pos-y-val').innerText = `${state.backPosY}%`;
-
-      document.getElementById('front-preview-img').src = state.frontImage;
-
-      for (let i = 0; i < 3; i++) {
-        document.getElementById(`reward-text-${i}`).value = state.cards[i].rewardText;
-        document.getElementById(`order-${i}`).value = state.cards[i].order;
-      }
-    }
-
-    function applyStateToOverlay() {
-      document.documentElement.style.setProperty('--card-width', `${state.cardWidth}px`);
-      document.documentElement.style.setProperty('--primary-blue', state.primaryColor);
-      document.documentElement.style.setProperty('--accent-glow', `${state.primaryColor}88`);
-      document.documentElement.style.setProperty('--text-color', state.fontColor);
-
-      const container = document.getElementById('cards-container');
-      container.className = `cards-container ${state.layout}`;
-
-      const cardElements = Array.from(container.children);
-      cardElements.sort((a, b) => {
-        const idA = parseInt(a.getAttribute('data-card-id'));
-        const idB = parseInt(b.getAttribute('data-card-id'));
-        return state.cards[idA].order - state.cards[idB].order;
-      });
-      cardElements.forEach(card => container.appendChild(card));
-
-      document.querySelectorAll('.card-front .card-img-layer img').forEach(img => {
-        img.src = state.frontImage;
-        img.style.objectFit = state.frontFit;
-        img.style.transform = `scale(${state.frontZoom / 100})`;
-        img.style.objectPosition = `${state.frontPosX}% ${state.frontPosY}%`;
-      });
-
-      state.cards.forEach(card => {
-        const cardWrapper = document.querySelector(`.card-wrapper[data-card-id="${card.id}"]`);
-        if (cardWrapper) {
-          const backImg = cardWrapper.querySelector('.card-back .card-img-layer img');
-          const backText = cardWrapper.querySelector('.back-text');
-
-          backImg.src = card.image;
-          backImg.style.objectFit = state.backFit;
-          backImg.style.transform = `scale(${state.backZoom / 100})`;
-          backImg.style.objectPosition = `${state.backPosX}% ${state.backPosY}%`;
-
-          backText.innerText = card.rewardText;
+    function lockOtherCards(selectedId) {
+      ['card1', 'card2', 'card3'].forEach(id => {
+        if (id !== selectedId) {
+          const card = document.getElementById(id);
+          if (card) card.classList.add('disabled');
         }
       });
     }
 
-    function resetSavedData() {
-      if (confirm("Reset all overlay settings back to default?")) {
-        localStorage.removeItem(STORAGE_KEY);
-        location.reload();
+    // Listen for Sync Signals (Streamlabs / Director View)
+    channel.subscribe('card-flip', (message) => {
+      if (!isClient) {
+        flipAndHighlight(message.data.cardId);
       }
-    }
+    });
   </script>
 </body>
 </html>
