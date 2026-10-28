@@ -23,42 +23,28 @@
       font-family: Arial, sans-serif;
     }
 
-    /* VDO.Ninja Video Background Container */
-    #vdo-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 1;
-      border: none;
-      pointer-events: none; /* Allows touch events to fall through if needed */
-    }
-
-    /* Interactive Overlay Canvas Layer */
+    /* Container for the cards */
     #overlay-container {
       position: absolute;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      z-index: 10; /* Sits cleanly ABOVE the video layer */
+      z-index: 10;
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 15px;
+      gap: 20px;
       padding: 20px;
-      pointer-events: auto; /* Forces 100% touch interactivity on mobile */
     }
 
-    /* Cards Styling */
+    /* Base Card Styling */
     .card {
-      width: 100px;
-      height: 150px;
+      width: 120px;
+      height: 180px;
       perspective: 1000px;
       cursor: pointer;
       position: relative;
-      touch-action: manipulation;
     }
 
     .card-inner {
@@ -66,10 +52,10 @@
       width: 100%;
       height: 100%;
       text-align: center;
-      transition: transform 0.6s;
+      transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
       transform-style: preserve-3d;
       border-radius: 12px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
     }
 
     .card.flipped .card-inner {
@@ -83,86 +69,69 @@
       -webkit-backface-visibility: hidden;
       backface-visibility: hidden;
       border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: bold;
-      color: #fff;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
       border: 2px solid #00d2ff;
     }
 
+    /* Card Back (Default Face Down Graphic) */
     .card-front {
-      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      background-image: url('card-back.png'); /* Ensure your card back image file matches this filename */
+      background-color: #1a1a1a;
     }
 
+    /* Card Front (Flipped Image Graphic) */
     .card-back {
-      background: linear-gradient(135deg, #ff416c, #ff4b2b);
+      background-image: url('card-front.png'); /* Ensure your card front image file matches this filename */
+      background-color: #00d2ff;
       transform: rotateY(180deg);
     }
 
-    /* Locked state when client taps a card */
+    /* Disabled/Locked state when selected */
     .card.disabled {
-      opacity: 0.5;
+      opacity: 0.6;
       pointer-events: none;
-      filter: grayscale(80%);
     }
   </style>
 </head>
 <body>
 
-  <!-- Background VDO.Ninja Frame (Dynamically injected if client mode) -->
-  <iframe id="vdo-container" allow="camera; microphone; autoplay"></iframe>
-
-  <!-- Foreground Touch Interactive Overlay -->
   <div id="overlay-container">
     <div class="card" id="card1" onclick="selectCard('card1')">
       <div class="card-inner">
-        <div class="card-front">Card 1</div>
-        <div class="card-back">Selected</div>
+        <div class="card-front"></div>
+        <div class="card-back"></div>
       </div>
     </div>
     <div class="card" id="card2" onclick="selectCard('card2')">
       <div class="card-inner">
-        <div class="card-front">Card 2</div>
-        <div class="card-back">Selected</div>
+        <div class="card-front"></div>
+        <div class="card-back"></div>
       </div>
     </div>
     <div class="card" id="card3" onclick="selectCard('card3')">
       <div class="card-inner">
-        <div class="card-front">Card 3</div>
-        <div class="card-back">Selected</div>
+        <div class="card-front"></div>
+        <div class="card-back"></div>
       </div>
     </div>
   </div>
 
   <script>
-    // URL Parameter Parsing
     const urlParams = new URLSearchParams(window.location.search);
     const isClient = urlParams.get('client') === 'true';
-    const roomName = urlParams.get('room') || 'CLS2026';
 
-    // Ably Realtime Setup
+    // Ably Setup
     const ably = new Ably.Realtime('PaqQqA.Z2mwNw:eC01Vbna9gRftKwSPQAGqQAX4_3aXU4alNy342yGYK8');
     const channel = ably.channels.get('connectifit-cards');
 
     let hasSelected = false;
 
-    // Load VDO.Ninja into background iframe on client mobile
-    const vdoFrame = document.getElementById('vdo-container');
-    if (isClient) {
-      vdoFrame.src = `https://vdo.ninja/?push&room=${roomName}&webcam&transparent&cover&clean&nocontrols`;
-    } else {
-      // In Streamlabs mode, hide iframe background so scene stays transparent
-      vdoFrame.style.display = 'none';
-    }
-
-    // Card Selection Logic
     function selectCard(cardId) {
-      if (hasSelected && isClient) return; // Restrict client to 1 selection
+      if (hasSelected && isClient) return;
 
       flipAndHighlight(cardId);
-
-      // Broadcast event via Ably
       channel.publish('card-flip', { cardId: cardId });
 
       if (isClient) {
@@ -187,7 +156,7 @@
       });
     }
 
-    // Listen for Sync Signals (Streamlabs / Director View)
+    // Listen for Sync Signals (Streamlabs)
     channel.subscribe('card-flip', (message) => {
       if (!isClient) {
         flipAndHighlight(message.data.cardId);
