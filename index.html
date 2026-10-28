@@ -41,18 +41,19 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      padding: 2rem;
+      padding: 1rem;
     }
 
-    /* Hardware-Accelerated 1.5s Fade In / Out Smooth Transitions */
+    /* Hardware-Accelerated Smooth Transitions & Mobile Wrapping */
     .cards-container {
       display: flex;
-      gap: 2.5rem;
+      gap: 2rem;
       justify-content: center;
       align-items: center;
       perspective: 1200px;
       width: 100%;
       max-width: 1200px;
+      flex-wrap: wrap; /* Prevents squishing/stretching on mobile screens */
       opacity: 1;
       transform: scale(1) translateY(0);
       transition: opacity 1.5s cubic-bezier(0.16, 1, 0.3, 1), transform 1.5s cubic-bezier(0.16, 1, 0.3, 1);
@@ -71,7 +72,7 @@
     .cards-container.grid {
       display: grid;
       grid-template-columns: repeat(2, auto);
-      gap: 2rem;
+      gap: 1.5rem;
       justify-content: center;
     }
 
@@ -145,7 +146,7 @@
       position: relative;
       z-index: 3;
       text-align: center;
-      padding: 1rem;
+      padding: 0.8rem;
       background: rgba(0, 0, 0, 0.65);
       backdrop-filter: blur(6px);
       width: 90%;
@@ -322,7 +323,7 @@
 
     .range-value {
       font-size: 0.8rem;
-      width: 40px;
+      width: 45px;
       text-align: right;
       color: #a0aec0;
     }
@@ -621,30 +622,32 @@
 
       <!-- TAB 4: DISPLAY & AUDIO -->
       <div id="tab-display" class="tab-content">
-        <div class="row-2">
-          <div class="form-group">
-            <label>Card Width (px)</label>
-            <input type="number" id="card-width-input" class="form-control" value="200" min="120" max="400" oninput="updateSettings()">
-          </div>
-          <div class="form-group">
-            <label>Border Glow Color</label>
-            <input type="color" id="primary-color-input" class="form-control" value="#0088ff" style="height: 38px; padding:2px;" oninput="updateSettings()">
+        <div class="form-group">
+          <label>Card Size (Width)</label>
+          <div class="range-group">
+            <input type="range" id="card-width-slider" min="100" max="300" value="200" oninput="updateSettings()">
+            <span class="range-value" id="card-width-val">200px</span>
           </div>
         </div>
 
         <div class="row-2">
           <div class="form-group">
+            <label>Border Glow Color</label>
+            <input type="color" id="primary-color-input" class="form-control" value="#0088ff" style="height: 38px; padding:2px;" oninput="updateSettings()">
+          </div>
+          <div class="form-group">
             <label>Font Color</label>
             <input type="color" id="font-color-input" class="form-control" value="#ffffff" style="height: 38px; padding:2px;" oninput="updateSettings()">
           </div>
-          <div class="form-group">
-            <label>Layout Style</label>
-            <select id="layout-select" class="form-control" onchange="updateSettings()">
-              <option value="horizontal" selected>Horizontal</option>
-              <option value="grid">Grid (2x2)</option>
-              <option value="vertical">Vertical</option>
-            </select>
-          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Layout Style</label>
+          <select id="layout-select" class="form-control" onchange="updateSettings()">
+            <option value="horizontal" selected>Horizontal</option>
+            <option value="grid">Grid (2x2)</option>
+            <option value="vertical">Vertical</option>
+          </select>
         </div>
 
         <div class="form-group">
@@ -671,8 +674,8 @@
   <script>
     const STORAGE_KEY = 'CONNECTIFIT_CARD_OVERLAY_STATE';
 
-    // === PASTE YOUR ABLY ROOT API KEY BELOW ===
-    const ABLY_KEY = 'PASTE_YOUR_ABLY_ROOT_KEY_HERE';
+    // Ably Root API Key configured
+    const ABLY_KEY = 'PaqQqA.Z2mwNw:eC01Vbna9gRftKwSPQAGqQAX4_3aXU4alNy342yGYK8';
     
     // Initialize Ably connection for cross-device sync
     const ably = new Ably.Realtime(ABLY_KEY);
@@ -738,7 +741,6 @@
     }
 
     function handleGlobalHotkeys(event) {
-      // Avoid triggering when typing into text boxes
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
         return;
       }
@@ -772,13 +774,11 @@
       document.getElementById(`tab-${tabId}`).classList.add('active');
     }
 
-    // === ENHANCED CARD CLICK WITH ABLY SYNC ===
     function handleCardClick(cardIndex, fromRemote = false) {
       const cardEl = document.querySelector(`.card-wrapper[data-card-id="${cardIndex}"]`);
       if (!cardEl) return;
 
       if (!fromRemote) {
-        // Local click: toggle state and broadcast exact target state
         cardEl.classList.toggle('flipped');
         const isFlipped = cardEl.classList.contains('flipped');
         
@@ -789,7 +789,6 @@
 
         channel.publish('card-state-change', { id: cardIndex, flipped: isFlipped });
       } else {
-        // Remote click received: match target state
         const currentlyFlipped = cardEl.classList.contains('flipped');
         if (currentlyFlipped !== fromRemote.flipped) {
           cardEl.classList.toggle('flipped', fromRemote.flipped);
@@ -801,7 +800,6 @@
       }
     }
 
-    // Listen for remote card state updates from clients or Streamlabs
     channel.subscribe('card-state-change', (message) => {
       handleCardClick(message.data.id, { flipped: message.data.flipped });
     });
@@ -838,7 +836,9 @@
     }
 
     function updateSettings() {
-      state.cardWidth = document.getElementById('card-width-input').value;
+      state.cardWidth = document.getElementById('card-width-slider').value;
+      document.getElementById('card-width-val').innerText = `${state.cardWidth}px`;
+
       state.primaryColor = document.getElementById('primary-color-input').value;
       state.fontColor = document.getElementById('font-color-input').value;
       state.layout = document.getElementById('layout-select').value;
@@ -942,7 +942,9 @@
     }
 
     function syncUIInputsFromState() {
-      document.getElementById('card-width-input').value = state.cardWidth;
+      document.getElementById('card-width-slider').value = state.cardWidth;
+      document.getElementById('card-width-val').innerText = `${state.cardWidth}px`;
+
       document.getElementById('primary-color-input').value = state.primaryColor;
       document.getElementById('font-color-input').value = state.fontColor;
       document.getElementById('layout-select').value = state.layout;
